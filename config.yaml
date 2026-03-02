@@ -1,0 +1,11 @@
+reddit:
+  # Minimum upvotes to include a post
+  min_upvotes: 5
+  # Minimum age in hours before post is included
+  min_age_hours: 2
+  # Number of top posts to include
+  top_n: 5
+
+discord:
+  # Get this from Discord Server Settings > Integrations > Webhooks
+  webhook_url: "https://discord.com/api/webhooks/1477337038683508797/jP5s9EYiLlLuatah1nS0yXQKEvfdae2n4ZbYPA77oXY_4bzDptKZs6ZaHY1oN8svt5UI"

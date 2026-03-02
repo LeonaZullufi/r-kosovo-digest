@@ -1,0 +1,26 @@
+name: Daily r/Kosovo Digest
+
+on:
+  schedule:
+    - cron: '0 8 * * *'  # Daily at 8:00 UTC
+  workflow_dispatch:
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run digest
+        env:
+          CONFIG_PATH: ${{ github.workspace }}/config.yaml
+        run: python main.py
