@@ -62,11 +62,16 @@ def is_old_enough(post_created_utc: int, min_hours: int = 2) -> bool:
 
 def filter_posts(posts: list, min_upvotes: int = 1, min_age_hours: int = 2) -> list:
     filtered = []
+    now = datetime.now(timezone.utc)
     for post in posts:
         data = post['data']
         created_utc = data['created_utc']
         
-        if not is_old_enough(created_utc, min_age_hours):
+        post_time = datetime.fromtimestamp(created_utc, tz=timezone.utc)
+        age_hours = (now - post_time).total_seconds() / 3600
+        print(f"  Post: {data.get('title', 'N/A')[:50]}... | Score: {data.get('score', 0)} | Age: {age_hours:.1f}h")
+        
+        if age_hours < min_age_hours:
             continue
         
         if data['score'] < min_upvotes:
@@ -149,6 +154,8 @@ def main():
         return
     
     print(f"Fetched {len(all_posts)} posts")
+    
+    print("Sample post:", all_posts[0] if all_posts else "None")
     
     filtered = filter_posts(all_posts, min_upvotes, min_age_hours)
     print(f"Filtered to {len(filtered)} posts (min {min_upvotes} upvotes, {min_age_hours}h old)")
