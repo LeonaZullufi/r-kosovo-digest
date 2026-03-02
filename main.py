@@ -2,6 +2,7 @@ import os
 import json
 import requests
 import yaml
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -12,16 +13,44 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
-def get_reddit_posts(subreddit: str = "kosovo", limit: int = 100) -> list:
-    url = f"https://old.reddit.com/r/{subreddit}/top.json"
-    params = {"t": "day", "limit": limit}
-    headers = {"User-Agent": "r/KosovoDailyDigest/1.0"}
+def get_reddit_posts(subreddit: str = "kosovo", limit: int = 50) -> list:
+    url = f"https://www.reddit.com/r/{subreddit}/.rss"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/rss+xml"
+    }
     
-    response = requests.get(url, params=params, headers=headers)
+    response = requests.get(url, headers=headers, timeout=30)
     response.raise_for_status()
-    data = response.json()
     
-    return data['data']['children']
+    root = ET.fromstring(response.content)
+    posts = []
+    
+    for item in root.findall('.//item'):
+        title = item.find('title').text
+        link = item.find('link').text
+        pub_date = item.find('pubDate').text
+        comments = item.find('{http://www.reddit.com/feed/}num_comments')
+        
+        score_elem = item.find('{http://www.reddit.com/feed/}score')
+        upvote = int(score_elem.text) if score_elem is not None else 0
+        num_comments = int(comments.text) if comments is not None else 0
+        
+        created_utc = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %z').timestamp()
+        
+        posts.append({
+            'data': {
+                'title': title,
+                'permalink': link.replace('https://reddit.com', ''),
+                'score': upvote,
+                'num_comments': num_comments,
+                'created_utc': created_utc,
+                'link_flair_text': '',
+                'url': link
+            }
+        })
+    
+    return posts
 
 
 def is_old_enough(post_created_utc: int, min_hours: int = 2) -> bool:
