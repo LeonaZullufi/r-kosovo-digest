@@ -1,8 +1,8 @@
 reddit:
   # Minimum upvotes to include a post
-  min_upvotes: 5
+  min_upvotes: 1
   # Minimum age in hours before post is included
-  min_age_hours: 2
+  min_age_hours: 1
   # Number of top posts to include
   top_n: 5
 
