@@ -91,7 +91,13 @@ def post_to_discord(embeds: list, webhook_url: str) -> None:
 
 
 def main():
-    config = load_config()
+    print("Starting r/kosovo digest...")
+    
+    try:
+        config = load_config()
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        return
     
     reddit_config = config.get('reddit', {})
     discord_config = config.get('discord', {})
@@ -101,11 +107,18 @@ def main():
     top_n = reddit_config.get('top_n', 5)
     
     webhook_url = discord_config.get('webhook_url')
-    if not webhook_url:
-        raise ValueError("Discord webhook URL not configured")
+    if not webhook_url or webhook_url == "YOUR_DISCORD_WEBHOOK_URL":
+        print("Error: Discord webhook URL not configured")
+        return
     
-    print("Fetching posts from r/kosovo...")
-    all_posts = get_reddit_posts()
+    print(f"Fetching posts from r/kosovo (min_upvotes={min_upvotes}, min_age_hours={min_age_hours})...")
+    
+    try:
+        all_posts = get_reddit_posts()
+    except Exception as e:
+        print(f"Error fetching posts: {e}")
+        return
+    
     print(f"Fetched {len(all_posts)} posts")
     
     filtered = filter_posts(all_posts, min_upvotes, min_age_hours)
@@ -130,9 +143,12 @@ def main():
     
     embeds = embeds[:10]
     
-    print(f"Posting {len(embeds)} posts to Discord...")
-    post_to_discord(embeds, webhook_url)
-    print("Done!")
+    try:
+        print(f"Posting {len(embeds)} posts to Discord...")
+        post_to_discord(embeds, webhook_url)
+        print("Done!")
+    except Exception as e:
+        print(f"Error posting to Discord: {e}")
 
 
 if __name__ == "__main__":
