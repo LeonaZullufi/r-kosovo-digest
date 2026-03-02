@@ -1,6 +1,8 @@
 name: Daily r/Kosovo Digest
 
 on:
+  push:
+    branches: [master]
   schedule:
     - cron: '0 8 * * *'  # Daily at 8:00 UTC
   workflow_dispatch:
