@@ -2,8 +2,7 @@ import os
 import json
 import requests
 import yaml
-import xml.etree.ElementTree as ET
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -13,63 +12,49 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
-def get_reddit_posts(subreddit: str = "kosovo", limit: int = 50) -> list:
-    url = f"https://www.reddit.com/r/{subreddit}/.rss"
+def get_reddit_posts(subreddit: str = "kosovo") -> list:
+    url = f"https://www.reddit.com/r/{subreddit}/hot.json"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/rss+xml"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json"
     }
     
     response = requests.get(url, headers=headers, timeout=30)
     response.raise_for_status()
     
-    root = ET.fromstring(response.content)
+    data = response.json()
     posts = []
     
-    for item in root.findall('.//item'):
-        title = item.find('title').text
-        link = item.find('link').text
-        pub_date = item.find('pubDate').text
-        comments = item.find('{http://www.reddit.com/feed/}num_comments')
-        
-        score_elem = item.find('{http://www.reddit.com/feed/}score')
-        upvote = int(score_elem.text) if score_elem is not None else 0
-        num_comments = int(comments.text) if comments is not None else 0
-        
-        created_utc = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %z').timestamp()
-        
+    for post in data['data']['children']:
+        p = post['data']
         posts.append({
             'data': {
-                'title': title,
-                'permalink': link.replace('https://reddit.com', ''),
-                'score': upvote,
-                'num_comments': num_comments,
-                'created_utc': created_utc,
-                'link_flair_text': '',
-                'url': link
+                'title': p.get('title', ''),
+                'permalink': p.get('permalink', ''),
+                'score': p.get('score', 0),
+                'num_comments': p.get('num_comments', 0),
+                'created_utc': p.get('created_utc', 0),
+                'link_flair_text': p.get('link_flair_text', ''),
+                'url': p.get('url', '')
             }
         })
     
     return posts
 
 
-def is_old_enough(post_created_utc: int, min_hours: int = 2) -> bool:
-    post_time = datetime.fromtimestamp(post_created_utc, tz=timezone.utc)
+def filter_posts(posts: list, min_upvotes: int = 1, min_age_hours: int = 1) -> list:
     now = datetime.now(timezone.utc)
-    age = now - post_time
-    return age.total_seconds() >= (min_hours * 3600)
-
-
-def filter_posts(posts: list, min_upvotes: int = 1, min_age_hours: int = 2) -> list:
     filtered = []
-    now = datetime.now(timezone.utc)
+    
     for post in posts:
         data = post['data']
         created_utc = data['created_utc']
         
+        if created_utc == 0:
+            continue
+            
         post_time = datetime.fromtimestamp(created_utc, tz=timezone.utc)
         age_hours = (now - post_time).total_seconds() / 3600
-        print(f"  Post: {data.get('title', 'N/A')[:50]}... | Score: {data.get('score', 0)} | Age: {age_hours:.1f}h")
         
         if age_hours < min_age_hours:
             continue
@@ -78,6 +63,7 @@ def filter_posts(posts: list, min_upvotes: int = 1, min_age_hours: int = 2) -> l
             continue
         
         filtered.append(data)
+        print(f"  OK: {data.get('title', '')[:50]} | Score: {data.get('score', 0)} | Age: {age_hours:.1f}h")
     
     return filtered
 
@@ -103,24 +89,27 @@ def format_post_embed(post: dict) -> dict:
         "url": url,
         "color": 16744448,
         "fields": [
-            {"name": "⬆️ Upvotes", "value": str(post['score']), "inline": True},
-            {"name": "💬 Comments", "value": str(post['num_comments']), "inline": True},
+            {"name": "Upvotes", "value": str(post['score']), "inline": True},
+            {"name": "Comments", "value": str(post['num_comments']), "inline": True},
         ]
     }
-    
-    if post.get('thumbnail') and post['thumbnail'].startswith('http'):
-        embed["thumbnail"] = {"url": post['thumbnail']}
     
     return embed
 
 
 def post_to_discord(embeds: list, webhook_url: str) -> None:
+    if not embeds:
+        print("No embeds to post!")
+        return
+        
     payload = {
-        "content": "📊 **r/Kosovo Daily Digest**",
+        "content": "**r/Kosovo Daily Digest**",
         "embeds": embeds
     }
     
-    response = requests.post(webhook_url, json=payload)
+    print(f"Posting to Discord: {len(embeds)} embeds")
+    response = requests.post(webhook_url, json=payload, timeout=30)
+    print(f"Discord response: {response.status_code}")
     response.raise_for_status()
 
 
@@ -136,16 +125,16 @@ def main():
     reddit_config = config.get('reddit', {})
     discord_config = config.get('discord', {})
     
-    min_upvotes = reddit_config.get('min_upvotes', 5)
-    min_age_hours = reddit_config.get('min_age_hours', 2)
+    min_upvotes = reddit_config.get('min_upvotes', 1)
+    min_age_hours = reddit_config.get('min_age_hours', 1)
     top_n = reddit_config.get('top_n', 5)
     
     webhook_url = discord_config.get('webhook_url')
-    if not webhook_url or webhook_url == "YOUR_DISCORD_WEBHOOK_URL":
+    if not webhook_url:
         print("Error: Discord webhook URL not configured")
         return
     
-    print(f"Fetching posts from r/kosovo (min_upvotes={min_upvotes}, min_age_hours={min_age_hours})...")
+    print(f"Fetching posts from r/kosovo...")
     
     try:
         all_posts = get_reddit_posts()
@@ -155,14 +144,16 @@ def main():
     
     print(f"Fetched {len(all_posts)} posts")
     
-    print("Sample post:", all_posts[0] if all_posts else "None")
+    if not all_posts:
+        print("No posts fetched!")
+        return
     
     filtered = filter_posts(all_posts, min_upvotes, min_age_hours)
-    print(f"Filtered to {len(filtered)} posts (min {min_upvotes} upvotes, {min_age_hours}h old)")
+    print(f"Filtered to {len(filtered)} posts")
     
     if not filtered:
-        print("No posts meet the criteria. Skipping Discord post.")
-        return
+        print("No posts meet criteria, but will post anyway for testing...")
+        filtered = all_posts[:top_n]
     
     top_posts = get_top_posts(filtered, top_n)
     most_commented = get_most_commented_post(filtered)
@@ -174,13 +165,12 @@ def main():
     
     if most_commented and most_commented not in top_posts:
         embed = format_post_embed(most_commented)
-        embed["title"] = f"💬 Most Discussed: {embed['title']}"
+        embed["title"] = f"Most Discussed: {embed['title']}"
         embeds.append(embed)
     
     embeds = embeds[:10]
     
     try:
-        print(f"Posting {len(embeds)} posts to Discord...")
         post_to_discord(embeds, webhook_url)
         print("Done!")
     except Exception as e:
